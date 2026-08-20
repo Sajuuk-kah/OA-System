@@ -1290,9 +1290,20 @@
                 </div>
             </div>
             <div class="login-right">
-                <h2>选择演示账号登录</h2>
-                <p class="subtitle">点击即可快速登录，体验不同角色的操作界面</p>
-                <div class="demo-accounts" id="demoAccounts"></div>
+                <h2>系统登录</h2>
+                <p class="subtitle">请输入账号和密码</p>
+                <div class="login-form" style="width:100%;">
+                    <input type="text" id="loginUsername" class="form-input" placeholder="请输入账号" autocomplete="username" style="margin-bottom:12px;font-size:15px;padding:12px 16px;">
+                    <input type="password" id="loginPassword" class="form-input" placeholder="请输入密码" autocomplete="current-password" style="margin-bottom:20px;font-size:15px;padding:12px 16px;" onkeydown="if(event.key==='Enter')doLogin()">
+                    <button onclick="doLogin()" style="width:100%;padding:13px;background:var(--primary);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;letter-spacing:2px;">登 录</button>
+                    <div style="margin-top:16px;font-size:13px;color:#94a3b8;line-height:1.8;">
+                        <div style="font-weight:600;color:#64748b;margin-bottom:6px;">测试账号（密码均为 123456）：</div>
+                        <div>总经理：zhang · 副总：li / wangvp</div>
+                        <div>部长：chen / zhao / liu / zhou · 组长：zheng / sun / qian</div>
+                        <div>编制：wu / wang / lig / zhangg / liug / cheng / yang / huang</div>
+                        <div>设计部：lin / zhoud</div>
+                    </div>
+                </div>
                 <div class="login-footer">
                     技术支持：NocoBase 开源低代码平台
                 </div>
@@ -3736,25 +3747,54 @@
         // ==================== 登录相关 ====================
 
         function renderLoginPage() {
-            const container = document.getElementById('demoAccounts');
-            // 显示所有用户（演示用户优先，新增用户在后）
-            const demoUsernames = ['zhang', 'li', 'liu', 'chen', 'zhao', 'zhou', 'zheng', 'wangvp', 'wang'];
-            const demoUsers = users.filter(u => demoUsernames.includes(u.username));
-            const otherUsers = users.filter(u => !demoUsernames.includes(u.username));
-            const displayUsers = [...demoUsers, ...otherUsers];
-            
-            container.innerHTML = displayUsers.map(user => `
-                <div class="demo-account" onclick="login('${user.username}')">
-                    <div class="info">
-                        <div class="avatar">${user.avatar}</div>
-                        <div>
-                            <div class="name">${user.name}</div>
-                            <div class="role">${user.role} · ${user.dept}</div>
-                        </div>
-                    </div>
-                    <div class="login-btn">登录 →</div>
-                </div>
-            `).join('');
+            // 登录后从 Supabase 刷新用户列表时，不需要重新渲染登录页
+            // 只在页面加载时聚焦账号输入框
+            const input = document.getElementById('loginUsername');
+            if (input) input.focus();
+        }
+
+        async function doLogin() {
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value.trim();
+
+            if (!username || !password) {
+                showToast('请输入账号和密码', 'error');
+                return;
+            }
+
+            // 尝试从 Supabase 加载最新用户数据
+            if (DB.isConfigured()) {
+                const remoteUsers = await DB.loadUsers();
+                if (remoteUsers && remoteUsers.length > 0) {
+                    users.length = 0;
+                    remoteUsers.forEach(u => users.push(u));
+                }
+            }
+
+            const user = users.find(u => u.username === username && u.password === password);
+            if (!user) {
+                showToast('账号或密码错误', 'error');
+                return;
+            }
+
+            // 登录成功
+            if (DB.isConfigured()) await DB.init();
+            await loginDirect(user);
+        }
+
+        // 内部登录（已通过验证后直接调用）
+        async function loginDirect(user) {
+            currentUser = user;
+            document.getElementById('loginPage').style.display = 'none';
+            document.getElementById('appContainer').classList.add('active');
+            document.getElementById('sidebarAvatar').textContent = currentUser.avatar;
+            document.getElementById('sidebarName').textContent = currentUser.name;
+            document.getElementById('sidebarRole').textContent = currentUser.role;
+            renderSidebar();
+            renderDashboard();
+            navigateTo('dashboard');
+            document.getElementById('currentDate').textContent = formatDate(new Date());
+            if (DB.isConfigured()) await subscribeToChanges();
         }
 
         async function login(username) {
